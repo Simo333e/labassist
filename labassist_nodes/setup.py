@@ -19,7 +19,10 @@ setup(
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
-        'console_scripts': [
-        ],
-    },
+    'console_scripts': [
+        'sim_actions = labassist_nodes.sim_actions:main',
+        'fsm_validator = labassist_nodes.fsm_validator:main',
+        'notifier_console = labassist_nodes.notifier_console:main',
+    ],
+},
 )
