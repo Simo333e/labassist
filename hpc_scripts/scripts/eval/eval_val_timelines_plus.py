@@ -61,11 +61,11 @@ def load_class_names(class_index_path):
     else:
         names = obj
     return names
-
-def load_val_stems(splits_json: str) -> List[str]:
+ 
+def load_stems(splits_json: str, split_name: str) -> List[str]:
     sp = json.loads(pathlib.Path(splits_json).read_text())
     if "train" not in sp: sp = next(iter(sp.values()))
-    return [pathlib.Path(p).stem for p in sp.get("val", [])]
+    return [pathlib.Path(p).stem for p in sp.get(split_name, [])]
 
 def load_order(names):
     # assumes 'none' is first or present; order by index in class_index
@@ -94,16 +94,14 @@ def main():
     ap.add_argument("--num_f_maps",    type=int, default=64)
     ap.add_argument("--outdir", default=None)
     ap.add_argument("--make_timelines", action="store_true")
-    ap.add_argument("--mode_k", type=int, default=0)   # majority vote window (odd), e.g., 11
-    ap.add_argument("--min_dur", type=int, default=0)  # enforce min run length, e.g., 20
+    ap.add_argument("--split_name", choices=["val", "test"], default="val")
     ap.add_argument("--dilations", default="", help="unused for MS_TCN2 causal eval")
     ap.add_argument("--dropout", type=float, default=0.1)
-    ap.add_argument("--monotone", action="store_true", help="enforce step order at decode")
     ap.add_argument("--causal", action="store_true", help="use causal MS-TCN2; default is non-causal")
 
     args = ap.parse_args()
 
-    stems = load_val_stems(args.splits)
+    stems = load_stems(args.splits, args.split_name)
     names = load_class_names(args.class_index)
     ncls = len(names)
 
@@ -130,7 +128,7 @@ def main():
     sd = torch.load(pathlib.Path(args.weights), map_location=device)
     model.load_state_dict(sd); model.eval()
 
-    outdir = pathlib.Path(args.outdir or (pathlib.Path(args.exp_dir)/"eval_val"))
+    outdir = pathlib.Path(args.outdir or (pathlib.Path(args.exp_dir)/f"eval_{args.split_name}"))
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir/"timelines").mkdir(parents=True, exist_ok=True)
 
@@ -150,33 +148,7 @@ def main():
             logits = logits_bct.transpose(0,1).cpu().numpy()  # [T,C]
         pred = logits.argmax(-1)
 
-        # optional decoding: majority (mode) filter and minimum duration
-        if args.mode_k and args.mode_k > 1:
-            k = int(args.mode_k)
-            if (k % 2) == 0:
-                k += 1  # enforce odd window size
-            half = k // 2
-            sm = pred.copy()
-            for t in range(len(pred)):
-                lo = max(0, t - half)
-                hi = min(len(pred), t + half + 1)
-                win = pred[lo:hi]
-                m = int(np.bincount(win).argmax())
-                sm[t] = m
-            pred = sm
-        if args.min_dur and args.min_dur > 1:
-            run_starts = np.r_[0, np.where(pred[1:] != pred[:-1])[0] + 1]
-            run_ends = np.r_[run_starts[1:], len(pred)]
-            for s, e in zip(run_starts, run_ends):
-                if (e - s) < args.min_dur:
-                    left = pred[s - 1] if s > 0 else None
-                    right = pred[e] if e < len(pred) else None
-                    fill = right if right is not None else left
-                    if fill is not None:
-                        pred[s:e] = fill
-        if args.monotone:
-            p = torch.softmax(torch.from_numpy(logits), dim=-1).numpy()
-            pred = monotone_decode(p, load_order(names))
+        # decoding: use argmax only (no postprocessing)
         acc = float((pred == y).mean())
         for g,p in zip(y, pred):
             if 0 <= g < ncls: cm[g,p]+=1
@@ -192,10 +164,10 @@ def main():
     f1   = 2*prec*rec/np.maximum(prec+rec,1e-9)
     macroF1 = float(np.nanmean(f1))
     micro_acc = float(np.diag(cm).sum() / max(1, cm.sum()))
-    print(f"VAL micro-acc={micro_acc:.4f}  macroF1={macroF1:.4f}")
+    print(f"{args.split_name.upper()} micro-acc={micro_acc:.4f}  macroF1={macroF1:.4f}")
 
     # save metrics
-    np.savetxt(outdir/"confusion_val.csv", cm, fmt="%d", delimiter=",")
+    np.savetxt(outdir/f"confusion_{args.split_name}.csv", cm, fmt="%d", delimiter=",")
     with open(outdir/"summary.txt","w") as f:
         f.write(f"micro_acc={micro_acc:.6f}\nmacroF1={macroF1:.6f}\n")
         f.write("per-class (prec, rec, f1):\n")
@@ -208,11 +180,11 @@ def main():
     # confusion heatmap
     plt.figure(figsize=(6,5))
     plt.imshow(cm, cmap="Blues")
-    plt.title("Confusion (val)")
+    plt.title(f"Confusion ({args.split_name})")
     plt.xlabel("Pred"); plt.ylabel("GT")
     plt.colorbar()
     plt.tight_layout()
-    plt.savefig(outdir/"confusion_val.png", dpi=200)
+    plt.savefig(outdir/f"confusion_{args.split_name}.png", dpi=200)
     plt.close()
 
 if __name__ == "__main__":
