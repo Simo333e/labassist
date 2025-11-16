@@ -8,6 +8,11 @@ __pycache__/
 *.err
 *.out
 *.png
+*.jpg
 *.pdf
 *.csv
 *.pt
+DTULabAssistDataset/
+eval_data/
+runs/
+test*
