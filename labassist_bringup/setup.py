@@ -11,7 +11,10 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/labassist_bringup/launch', 
-        ['labassist_bringup/launch/demo_pipeline.launch.py'])
+        [
+            'labassist_bringup/launch/demo_pipeline.launch.py',
+            'labassist_bringup/launch/sim_from_video.launch.py'
+        ])
     ],
     install_requires=['setuptools'],
     zip_safe=True,
