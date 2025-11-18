@@ -5,3 +5,17 @@ __pycache__/
 *.pyc
 .vscode/
 .idea/
+*.err
+*.out
+*.png
+*.jpg
+*.pdf
+*.csv
+*.pt
+DTULabAssistDataset/
+eval_data/
+runs/
+test*
+*.xml
+*.err
+*.out
