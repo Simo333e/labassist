@@ -23,6 +23,9 @@ setup(
         'sim_actions = labassist_nodes.sim_actions:main',
         'fsm_validator = labassist_nodes.fsm_validator:main',
         'notifier_console = labassist_nodes.notifier_console:main',
+        'camera_player = labassist_nodes.camera_player:main',
+        'feature_resnet18 = labassist_nodes.feature_resnet18:main',
+        'mstcn_infer = labassist_nodes.mstcn_infer:main',
     ],
 },
 )
