@@ -16,6 +16,4 @@ DTULabAssistDataset/
 eval_data/
 runs/
 test*
-*.xml
-*.err
-*.out
+.env/
