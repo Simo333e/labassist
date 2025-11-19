@@ -51,7 +51,18 @@ class FeatureResNet18(Node):
 
     def _build_transform(self, imgsz: int):
         weights = ResNet18_Weights.IMAGENET1K_V1
-        normalize = T.Normalize(mean=weights.meta["mean"], std=weights.meta["std"])
+        # Robustly get mean/std across torchvision versions
+        mean = getattr(weights, "mean", None)
+        std = getattr(weights, "std", None)
+        if (mean is None or std is None) and hasattr(weights, "meta"):
+            meta = weights.meta
+            mean = meta.get("mean", mean)
+            std = meta.get("std", std)
+        if mean is None or std is None:
+            # Fallback to standard ImageNet normalization
+            mean = [0.485, 0.456, 0.406]
+            std = [0.229, 0.224, 0.225]
+        normalize = T.Normalize(mean=mean, std=std)
         return T.Compose(
             [
                 T.ToTensor(),
