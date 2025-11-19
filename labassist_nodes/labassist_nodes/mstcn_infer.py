@@ -4,6 +4,7 @@ import json
 import pathlib
 import sys
 from collections import deque
+import importlib.util  
 
 import numpy as np
 import rclpy
@@ -13,12 +14,6 @@ from std_msgs.msg import Float32MultiArray
 from std_msgs.msg import Header
 
 from labassist_interfaces.msg import ActionEvent
-
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from hpc_scripts.train_ms_tcn_plus import MultiStageCausal  # noqa: E402
 
 
 class MSTCNInfer(Node):
@@ -32,6 +27,12 @@ class MSTCNInfer(Node):
         self.declare_parameter("stages", 6)
         self.declare_parameter("window", 512)
         self.declare_parameter("device", "cpu")
+        self.declare_parameter("repo_root", "")
+        
+        self.declare_parameter("num_layers_pg", 10)
+        self.declare_parameter("num_layers_r", 10)
+        self.declare_parameter("num_r", 5)
+        self.declare_parameter("num_f_maps", 64)
 
         self.ckpt_path = pathlib.Path(
             self.get_parameter("ckpt").get_parameter_value().string_value
@@ -45,6 +46,25 @@ class MSTCNInfer(Node):
         self.device = self._resolve_device(
             self.get_parameter("device").get_parameter_value().string_value
         )
+        repo_root_param = (
+            self.get_parameter("repo_root").get_parameter_value().string_value
+        )
+        self.repo_root = self._resolve_repo_root(repo_root_param)
+
+        self.num_layers_pg = int(
+            self.get_parameter("num_layers_pg").get_parameter_value().integer_value
+        )
+        self.num_layers_r = int(
+            self.get_parameter("num_layers_r").get_parameter_value().integer_value
+        )
+        self.num_r = int(
+            self.get_parameter("num_r").get_parameter_value().integer_value
+        )
+        self.num_f_maps = int(
+            self.get_parameter("num_f_maps").get_parameter_value().integer_value
+        )
+
+        self._mstcn_ctor = self._import_mstcn(self.repo_root)
 
         self.names = self._load_class_index(self.class_index_path)
         self.model: torch.nn.Module | None = None
@@ -75,13 +95,15 @@ class MSTCNInfer(Node):
         if self.model is not None:
             return
         ncls = len(self.names)
+        # Instantiate MS_TCN2 using training hyperparameters
         self.model = (
-            MultiStageCausal(
+            self._mstcn_ctor(
+                self.num_layers_pg,
+                self.num_layers_r,
+                self.num_r,
+                self.num_f_maps,
                 dim,
                 ncls,
-                hidden=self.hidden,
-                stages=self.stages,
-                dilations=(1, 2, 4, 8, 16),
             )
             .to(self.device)
             .eval()
@@ -116,6 +138,43 @@ class MSTCNInfer(Node):
         )
         self.publisher.publish(event)
 
+    @staticmethod
+    def _resolve_repo_root(explicit_path: str) -> pathlib.Path:
+        if explicit_path:
+            candidate = pathlib.Path(explicit_path).expanduser().resolve()
+            return candidate
+        resolved = pathlib.Path(__file__).resolve()
+        try:
+            return resolved.parents[6]
+        except IndexError:  
+            return resolved.parent
+
+    @staticmethod
+    def _import_mstcn(repo_root: pathlib.Path):
+        """
+        Load MS_TCN2 class from hpc_scripts/MS-TCN/causal_model.py by file path.
+        """
+        causal_path = repo_root / "hpc_scripts" / "MS-TCN" / "causal_model.py"
+        if not causal_path.exists():
+            raise FileNotFoundError(
+                f"Could not find causal_model.py at {causal_path}. "
+                "Ensure repo_root is set correctly."
+            )
+        spec = importlib.util.spec_from_file_location(
+            "labassist_ms_tcn_causal", str(causal_path)
+        )
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Failed to create import spec for {causal_path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        if not hasattr(module, "MS_TCN2"):
+            raise AttributeError(
+                f"Module {causal_path} does not define MS_TCN2; "
+                "check the causal_model.py contents."
+            )
+        return module.MS_TCN2
+
 
 def main():
     rclpy.init()
@@ -125,4 +184,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
