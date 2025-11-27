@@ -4,9 +4,10 @@ import cv2
 import numpy as np
 import rclpy
 import torch
+import time
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from std_msgs.msg import Float32MultiArray, MultiArrayDimension, MultiArrayLayout
+from std_msgs.msg import Float32MultiArray, MultiArrayDimension, MultiArrayLayout, Header
 from torchvision.models import ResNet18_Weights, resnet18
 import torchvision.transforms as T
 
@@ -18,9 +19,12 @@ class FeatureResNet18(Node):
         super().__init__("feature_resnet18")
         self.declare_parameter("imgsz", 224)
         self.declare_parameter("device", "cpu")
+        self.declare_parameter("collect_metrics", False)
 
         imgsz = int(self.get_parameter("imgsz").get_parameter_value().integer_value)
         device = self.get_parameter("device").get_parameter_value().string_value
+        self.collect_metrics = self.get_parameter("collect_metrics").get_parameter_value().bool_value
+        
         if device.startswith("cuda") and torch.cuda.is_available():
             self.device = torch.device(device)
         else:
@@ -30,10 +34,16 @@ class FeatureResNet18(Node):
         self.tfm = self._build_transform(imgsz)
 
         self.publisher = self.create_publisher(Float32MultiArray, "/features", 10)
+        
+        # Metrics: publish timing info on a separate topic
+        if self.collect_metrics:
+            self.metrics_pub = self.create_publisher(Float32MultiArray, "/metrics/feature_timing", 50)
+        
         self.subscription = self.create_subscription(
             Image, "/camera/image_raw", self._on_image, 10
         )
-        self.get_logger().info(f"Feature node running on device={self.device}")
+        self.frame_seq = 0
+        self.get_logger().info(f"Feature node running on device={self.device}, metrics={self.collect_metrics}")
 
     def _load_model(self) -> torch.nn.Module:
         weights = ResNet18_Weights.IMAGENET1K_V1
@@ -51,7 +61,7 @@ class FeatureResNet18(Node):
 
     def _build_transform(self, imgsz: int):
         weights = ResNet18_Weights.IMAGENET1K_V1
-        # Robustly get mean/std across torchvision versions
+        
         mean = getattr(weights, "mean", None)
         std = getattr(weights, "std", None)
         if (mean is None or std is None) and hasattr(weights, "meta"):
@@ -59,7 +69,6 @@ class FeatureResNet18(Node):
             mean = meta.get("mean", mean)
             std = meta.get("std", std)
         if mean is None or std is None:
-            # Fallback to standard ImageNet normalization
             mean = [0.485, 0.456, 0.406]
             std = [0.229, 0.224, 0.225]
         normalize = T.Normalize(mean=mean, std=std)
@@ -73,6 +82,10 @@ class FeatureResNet18(Node):
         )
 
     def _on_image(self, msg: Image):
+        t_start = time.perf_counter_ns()
+        
+        t_frame_pub = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+        
         try:
             frame = np.frombuffer(msg.data, dtype=np.uint8).reshape(
                 (msg.height, msg.width, 3)
@@ -93,6 +106,8 @@ class FeatureResNet18(Node):
             self.get_logger().warning("Feature hook missing output.")
             return
 
+        t_end = time.perf_counter_ns()
+        
         feat_np = feat.squeeze(0).detach().cpu().numpy().astype(np.float32)
         msg_out = Float32MultiArray(
             layout=MultiArrayLayout(
@@ -106,6 +121,26 @@ class FeatureResNet18(Node):
             data=feat_np.tolist(),
         )
         self.publisher.publish(msg_out)
+        
+        # Publish timing metrics if enabled
+        if self.collect_metrics:
+            # Pack: [frame_seq, t_frame_pub, t_start, t_end] as float64 bits
+            timing_data = [
+                float(self.frame_seq),
+                float(t_frame_pub),
+                float(t_start),
+                float(t_end),
+            ]
+            metrics_msg = Float32MultiArray(
+                layout=MultiArrayLayout(
+                    dim=[MultiArrayDimension(label="timing", size=4, stride=4)],
+                    data_offset=0,
+                ),
+                data=timing_data,
+            )
+            self.metrics_pub.publish(metrics_msg)
+        
+        self.frame_seq += 1
 
 
 def main():
