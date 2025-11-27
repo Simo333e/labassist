@@ -26,6 +26,7 @@ setup(
         'camera_player = labassist_nodes.camera_player:main',
         'feature_resnet18 = labassist_nodes.feature_resnet18:main',
         'mstcn_infer = labassist_nodes.mstcn_infer:main',
+        'metrics_collector = labassist_nodes.metrics_collector:main',
     ],
 },
 )
