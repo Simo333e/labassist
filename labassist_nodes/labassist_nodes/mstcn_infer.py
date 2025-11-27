@@ -124,7 +124,9 @@ class MSTCNInfer(Node):
         if self.model is None:
             return
 
-        xb = torch.from_numpy(np.stack(self.buf, axis=0)).unsqueeze(0).to(self.device)
+        # Stack buffer into [T, D] then transpose to [D, T] for Conv1d input
+        xb_np = np.stack(self.buf, axis=0).T  # [D, T]
+        xb = torch.from_numpy(xb_np).unsqueeze(0).to(self.device)  # [1, D, T]
         logits = self.model(xb)[-1][0, -1]
         probs = torch.softmax(logits, dim=-1)
         top_idx = int(torch.argmax(probs).item())
