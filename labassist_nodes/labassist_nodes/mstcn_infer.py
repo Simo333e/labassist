@@ -3,6 +3,7 @@
 import json
 import pathlib
 import sys
+import time
 from collections import deque
 import importlib.util  
 
@@ -10,7 +11,7 @@ import numpy as np
 import rclpy
 import torch
 from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, MultiArrayDimension, MultiArrayLayout
 from std_msgs.msg import Header
 
 from labassist_interfaces.msg import ActionEvent
@@ -33,6 +34,7 @@ class MSTCNInfer(Node):
         self.declare_parameter("num_layers_r", 10)
         self.declare_parameter("num_r", 5)
         self.declare_parameter("num_f_maps", 64)
+        self.declare_parameter("collect_metrics", False)
 
         self.ckpt_path = pathlib.Path(
             self.get_parameter("ckpt").get_parameter_value().string_value
@@ -63,19 +65,26 @@ class MSTCNInfer(Node):
         self.num_f_maps = int(
             self.get_parameter("num_f_maps").get_parameter_value().integer_value
         )
+        self.collect_metrics = self.get_parameter("collect_metrics").get_parameter_value().bool_value
 
         self._mstcn_ctor = self._import_mstcn(self.repo_root)
 
         self.names = self._load_class_index(self.class_index_path)
         self.model: torch.nn.Module | None = None
         self.buf: deque[np.ndarray] = deque(maxlen=self.window)
+        self.frame_seq = 0
 
         self.subscription = self.create_subscription(
             Float32MultiArray, "/features", self._on_feature, 50
         )
         self.publisher = self.create_publisher(ActionEvent, "/actions", 10)
+        
+        # Metrics publisher
+        if self.collect_metrics:
+            self.metrics_pub = self.create_publisher(Float32MultiArray, "/metrics/mstcn_timing", 50)
+        
         self.get_logger().info(
-            f"MS-TCN infer ready (classes={len(self.names)}, device={self.device})"
+            f"MS-TCN infer ready (classes={len(self.names)}, device={self.device}, metrics={self.collect_metrics})"
         )
 
     def _resolve_device(self, target: str) -> torch.device:
@@ -95,7 +104,6 @@ class MSTCNInfer(Node):
         if self.model is not None:
             return
         ncls = len(self.names)
-        # Instantiate MS_TCN2 using training hyperparameters
         self.model = (
             self._mstcn_ctor(
                 self.num_layers_pg,
@@ -114,6 +122,8 @@ class MSTCNInfer(Node):
 
     @torch.no_grad()
     def _on_feature(self, msg: Float32MultiArray):
+        t_start = time.perf_counter_ns()
+        
         vec = np.array(msg.data, dtype=np.float32)
         if vec.ndim != 1:
             self.get_logger().warning("Expected 1-D feature vector; skipping.")
@@ -131,6 +141,8 @@ class MSTCNInfer(Node):
         probs = torch.softmax(logits, dim=-1)
         top_idx = int(torch.argmax(probs).item())
 
+        t_end = time.perf_counter_ns()
+
         event = ActionEvent(
             header=Header(stamp=self.get_clock().now().to_msg()),
             action_name=self.names[top_idx],
@@ -139,6 +151,26 @@ class MSTCNInfer(Node):
             confidence=float(probs[top_idx].item()),
         )
         self.publisher.publish(event)
+    
+        if self.collect_metrics:
+            # Pack: [frame_seq, t_start, t_end, top_idx, confidence]
+            timing_data = [
+                float(self.frame_seq),
+                float(t_start),
+                float(t_end),
+                float(top_idx),
+                float(probs[top_idx].item()),
+            ]
+            metrics_msg = Float32MultiArray(
+                layout=MultiArrayLayout(
+                    dim=[MultiArrayDimension(label="timing", size=5, stride=5)],
+                    data_offset=0,
+                ),
+                data=timing_data,
+            )
+            self.metrics_pub.publish(metrics_msg)
+        
+        self.frame_seq += 1
 
     @staticmethod
     def _resolve_repo_root(explicit_path: str) -> pathlib.Path:
