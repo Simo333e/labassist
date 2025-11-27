@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, ThisLaunchFileDir
 from launch_ros.actions import Node
 
@@ -11,6 +12,7 @@ def generate_launch_description():
     class_index = LaunchConfiguration("class_index")
     device = LaunchConfiguration("device")
     repo_root = LaunchConfiguration("repo_root")
+    collect_metrics = LaunchConfiguration("collect_metrics")
 
     return LaunchDescription(
         [
@@ -26,6 +28,11 @@ def generate_launch_description():
                 ),
                 description="Root of the labassist workspace containing hpc_scripts.",
             ),
+            DeclareLaunchArgument(
+                "collect_metrics",
+                default_value="false",
+                description="Enable latency metrics collection for baseline evaluation.",
+            ),
 
             Node(
                 package="labassist_nodes",
@@ -37,7 +44,7 @@ def generate_launch_description():
                 package="labassist_nodes",
                 executable="feature_resnet18",
                 name="feature_resnet18",
-                parameters=[{"imgsz": 224, "device": device}],
+                parameters=[{"imgsz": 224, "device": device, "collect_metrics": collect_metrics}],
             ),
             Node(
                 package="labassist_nodes",
@@ -52,6 +59,7 @@ def generate_launch_description():
                         "window": 512,
                         "device": device,
                         "repo_root": repo_root,
+                        "collect_metrics": collect_metrics,
                     }
                 ],
             ),
@@ -64,6 +72,20 @@ def generate_launch_description():
                 package="labassist_nodes",
                 executable="notifier_console",
                 name="notifier",
+            ),
+            # Metrics collector node - only launched when collect_metrics is true
+            Node(
+                package="labassist_nodes",
+                executable="metrics_collector",
+                name="metrics_collector",
+                condition=IfCondition(collect_metrics),
+                parameters=[
+                    {
+                        "output_dir": "~/.labassist/metrics",
+                        "log_interval": 100,
+                        "save_on_shutdown": True,
+                    }
+                ],
             ),
         ]
     )
