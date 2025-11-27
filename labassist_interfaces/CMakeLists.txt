@@ -9,6 +9,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ActionEvent.msg"
   "msg/MixParams.msg"
   "msg/Alert.msg"
+  "msg/FrameMetrics.msg"
   DEPENDENCIES std_msgs
 )
 
