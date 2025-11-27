@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, ThisLaunchFileDir
 from launch_ros.actions import Node
 
 
@@ -10,6 +10,7 @@ def generate_launch_description():
     ckpt = LaunchConfiguration("ckpt")
     class_index = LaunchConfiguration("class_index")
     device = LaunchConfiguration("device")
+    repo_root = LaunchConfiguration("repo_root")
 
     return LaunchDescription(
         [
@@ -18,6 +19,13 @@ def generate_launch_description():
             DeclareLaunchArgument("ckpt", default_value=""),
             DeclareLaunchArgument("class_index", default_value=""),
             DeclareLaunchArgument("device", default_value="cpu"),
+            DeclareLaunchArgument(
+                "repo_root",
+                default_value=PathJoinSubstitution(
+                    [ThisLaunchFileDir(), "..", "..", ".."]
+                ),
+                description="Root of the labassist workspace containing hpc_scripts.",
+            ),
 
             Node(
                 package="labassist_nodes",
@@ -43,6 +51,7 @@ def generate_launch_description():
                         "stages": 6,
                         "window": 512,
                         "device": device,
+                        "repo_root": repo_root,
                     }
                 ],
             ),
