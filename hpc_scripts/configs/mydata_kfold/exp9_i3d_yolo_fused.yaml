@@ -1,0 +1,50 @@
+# Experiment 9: I3D + YOLO Fused Features
+# Tests if YOLO object detection features improve action recognition on mydata
+# 
+# Hypothesis: YOLO detects target objects (pcr tube, reagent bottle) which
+# should help disambiguate "Pipette pcr tube" vs "Aspirate reagent" confusion.
+#
+# Compare with exp10 (I3D from scratch) for fair comparison.
+# Both trained from scratch since pretrained checkpoint (1024D) incompatible
+# with fused features (1052D).
+
+exp_name: mydata_kfold_exp9_i3d_yolo_fused_fold${FOLD_IDX}
+exp_dir: /work3/s204157/experiments/mydata_kfold_exp9_i3d_yolo_fused/fold${FOLD_IDX}
+device: cuda:0
+
+# NO pretraining - feature dimension changed (1052 vs 1024)
+pretrained:
+  checkpoint: null
+  num_classes: null
+
+data:
+  # K-fold split file (replaced per fold)
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/kfold_mydata/splits_fold${FOLD_IDX}.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  # FUSED features: I3D (1024) + YOLO (28) = 1052
+  xdir: /work3/s204157/data/labassist/combined_pcr/cache/features_10hz_i3d_yolo_fused
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6  # Same as baseline
+  num_f_maps: 64
+  features_dim: 1052  # 1024 (I3D) + 28 (YOLO)
+
+training:
+  num_epochs: 50
+  batch_size: 8
+  lr: 1e-4
+  use_class_weights: false
+  feature_dropout_p: 0.25
+  smoothing_lambda: 0.15
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  use_focal_loss: true
+  focal_gamma: 2.0
+
