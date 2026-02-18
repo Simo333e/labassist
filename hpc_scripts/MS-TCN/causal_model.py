@@ -11,6 +11,63 @@ from loguru import logger
 import os
 
 
+class FocalLoss(nn.Module):
+    """
+    Focal Loss for handling class imbalance in action segmentation.
+    
+    FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
+    
+    When gamma=0, this is equivalent to CrossEntropyLoss.
+    gamma=2.0 is the default from the original paper (Lin et al., 2017).
+    Higher gamma focuses more on hard examples (misclassified frames).
+    
+    Args:
+        weight: Per-class weights (optional, for additional class balancing)
+        gamma: Focusing parameter. Higher = more focus on hard examples.
+        ignore_index: Label index to ignore (e.g., -100 for padding)
+        reduction: 'mean', 'sum', or 'none'
+    """
+    def __init__(self, weight=None, gamma=2.0, ignore_index=-100, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.weight = weight
+        self.gamma = gamma
+        self.ignore_index = ignore_index
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        # inputs: [N, C] logits
+        # targets: [N] class indices
+        
+        # Compute standard cross-entropy (per-sample, no reduction)
+        ce_loss = F.cross_entropy(
+            inputs, targets,
+            weight=self.weight,
+            ignore_index=self.ignore_index,
+            reduction='none'
+        )
+        
+        # Compute p_t: probability of the correct class
+        # ce_loss = -log(p_t), so p_t = exp(-ce_loss)
+        pt = torch.exp(-ce_loss)
+        
+        # Focal weight: (1 - p_t)^gamma
+        # This down-weights easy examples (high p_t) and up-weights hard ones
+        focal_weight = (1 - pt) ** self.gamma
+        focal_loss = focal_weight * ce_loss
+        
+        # Handle ignore_index: those samples have ce_loss=0 already from F.cross_entropy
+        # but we need to make sure they don't affect the mean
+        if self.reduction == 'mean':
+            # Only average over non-ignored samples
+            valid_mask = (targets != self.ignore_index)
+            if valid_mask.sum() > 0:
+                return focal_loss[valid_mask].mean()
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        return focal_loss
+
+
 class CausalConv1d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, dilation=1, bias=True):
         super(CausalConv1d, self).__init__()
@@ -186,12 +243,26 @@ class Trainer:
         self.run_dir = run_dir
         self.dataset = dataset
 
-    def train(self, save_dir, batch_gen, num_epochs, batch_size, learning_rate, device):
+    def train(self, save_dir, batch_gen, num_epochs, batch_size, learning_rate, device,
+              class_weights=None, feature_dropout_p=0.0, use_focal_loss=False, focal_gamma=2.0):
         logger.add(save_dir.replace("models", "logs") + "_{time}.log")
         logger.add(sys.stdout, colorize=True, format="{message}")
 
         self.model.train()
         self.model.to(device)
+        if class_weights is not None:
+            if not torch.is_tensor(class_weights):
+                class_weights = torch.tensor(class_weights, dtype=torch.float32)
+            class_weights = class_weights.to(device)
+        
+        # Choose loss function: Focal Loss or standard CrossEntropy
+        if use_focal_loss:
+            ce_loss_fn = FocalLoss(weight=class_weights, gamma=focal_gamma, ignore_index=-100)
+            logger.info(f"Using Focal Loss with gamma={focal_gamma}")
+        else:
+            ce_loss_fn = nn.CrossEntropyLoss(ignore_index=-100, weight=class_weights)
+            logger.info("Using standard CrossEntropyLoss")
+        
         optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
         num_examples = len(batch_gen.list_of_examples)
@@ -204,6 +275,10 @@ class Trainer:
             while batch_gen.has_next():
                 batch_input, batch_target, mask = batch_gen.next_batch(batch_size)
                 batch_input, batch_target, mask = batch_input.to(device), batch_target.to(device), mask.to(device)
+                if feature_dropout_p > 0:
+                    dropout_mask = (torch.rand(batch_input.size(0), 1, batch_input.size(2), device=device)
+                                    < feature_dropout_p)
+                    batch_input = batch_input.masked_fill(dropout_mask, 0.0)
                 optimizer.zero_grad()
                 predictions = self.model(batch_input)
 
@@ -211,7 +286,7 @@ class Trainer:
                 ce_loss = 0
                 sm_loss = 0
                 for p in predictions:
-                    ce = self.ce(p.transpose(2, 1).contiguous().view(-1, self.num_classes), batch_target.view(-1))
+                    ce = ce_loss_fn(p.transpose(2, 1).contiguous().view(-1, self.num_classes), batch_target.view(-1))
                     sm = 0.15 * torch.mean(
                         torch.clamp(
                             self.mse(
@@ -239,7 +314,7 @@ class Trainer:
 
             batch_gen.reset()
 
-            if (epoch + 1) % 10 == 0:
+            if (epoch + 1) % 2 == 0 or (epoch + 1) == num_epochs:
                 torch.save(self.model.state_dict(), save_dir + "/epoch-" + str(epoch + 1) + ".model")
                 torch.save(optimizer.state_dict(), save_dir + "/epoch-" + str(epoch + 1) + ".opt")
 
