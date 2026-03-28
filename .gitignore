@@ -16,3 +16,7 @@ DTULabAssistDataset/
 eval_data/
 runs/
 test*
+*.npy
+*.md
+*.txt
+*.tex
