@@ -13,21 +13,52 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-def plot_timeline_with_legend(y: np.ndarray, pred: np.ndarray, names, outfile: str, title: str = ""):
+# Action class colors (for 5-class PCR)
+# Using tab20 colormap for consistency with dataset_statistics.py
+ACTION_COLORS = {
+    'none': '#1f77b4',
+    'Pipette pcr tube': '#aec7e8',
+    'Aspirate reagent': '#ff7f0e',
+    'Attach pipette tip': '#ffbb78',
+    'Eject pipette tip': '#2ca02c',
+    # Old names (v2) - map to same colors
+    'Manipulate PCR tube': '#aec7e8',
+    'Manipulate reagent': '#ff7f0e',
+}
+
+def plot_timeline_with_legend(y: np.ndarray, pred: np.ndarray, names, outfile: str, title: str = "", show_colorbar: bool = False):
     ncls = len(names)
-    base = matplotlib.colormaps.get_cmap("tab20")
-    colors = [base(i % 20) for i in range(ncls)]
+    
+    # Use consistent colors from ACTION_COLORS when available
+    colors = []
+    for name in names:
+        if name in ACTION_COLORS:
+            # Convert hex to RGB tuple
+            hex_color = ACTION_COLORS[name]
+            rgb = tuple(int(hex_color.lstrip('#')[i:i+2], 16)/255.0 for i in (0, 2, 4))
+            colors.append(rgb)
+        else:
+            # Fallback to tab20 for unknown classes
+            base = matplotlib.colormaps.get_cmap("tab20")
+            colors.append(base(len(colors) % 20))
+    
     cmap = ListedColormap(colors)
     norm = BoundaryNorm(np.arange(-0.5, ncls + 0.5, 1.0), cmap.N)
 
     def boundaries(arr):
         return np.where(arr[1:] != arr[:-1])[0] + 1
 
-    fig = plt.figure(figsize=(14, 4), layout="constrained")
-    gs = fig.add_gridspec(nrows=3, ncols=1, height_ratios=[1, 1, 0.28], hspace=0.25)
-    ax0 = fig.add_subplot(gs[0, 0])
-    ax1 = fig.add_subplot(gs[1, 0])
-    cax = fig.add_subplot(gs[2, 0])
+    if show_colorbar:
+        fig = plt.figure(figsize=(14, 4), layout="constrained")
+        gs = fig.add_gridspec(nrows=3, ncols=1, height_ratios=[1, 1, 0.28], hspace=0.25)
+        ax0 = fig.add_subplot(gs[0, 0])
+        ax1 = fig.add_subplot(gs[1, 0])
+        cax = fig.add_subplot(gs[2, 0])
+    else:
+        fig = plt.figure(figsize=(14, 3), layout="constrained")
+        gs = fig.add_gridspec(nrows=2, ncols=1, height_ratios=[1, 1], hspace=0.15)
+        ax0 = fig.add_subplot(gs[0, 0])
+        ax1 = fig.add_subplot(gs[1, 0])
 
     ax0.imshow(y[None, :], aspect="auto", cmap=cmap, norm=norm)
     ax0.set_title("GT" + (f" – {title}" if title else ""))
@@ -41,17 +72,18 @@ def plot_timeline_with_legend(y: np.ndarray, pred: np.ndarray, names, outfile: s
         for b in boundaries(arr):
             ax.axvline(b, color="k", alpha=0.15, lw=0.75)
 
-    sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
-    sm.set_array([])
-    cb = fig.colorbar(sm, cax=cax, orientation="horizontal")
-    cb.set_ticks(range(ncls))
-    cb.set_ticklabels([str(n) for n in names])
-    for lab in cax.get_xticklabels():
-        lab.set_rotation(40); lab.set_ha("right"); lab.set_fontsize(8)
+    if show_colorbar:
+        sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+        sm.set_array([])
+        cb = fig.colorbar(sm, cax=cax, orientation="horizontal")
+        cb.set_ticks(range(ncls))
+        cb.set_ticklabels([str(n) for n in names])
+        for lab in cax.get_xticklabels():
+            lab.set_rotation(40); lab.set_ha("right"); lab.set_fontsize(8)
 
     out = pathlib.Path(outfile)
     out.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out, dpi=200)
+    plt.savefig(out, dpi=200, bbox_inches='tight')
     plt.close(fig)
 def load_class_names(class_index_path):
     obj = json.loads(pathlib.Path(class_index_path).read_text())
@@ -94,10 +126,12 @@ def main():
     ap.add_argument("--num_f_maps",    type=int, default=64)
     ap.add_argument("--outdir", default=None)
     ap.add_argument("--make_timelines", action="store_true")
-    ap.add_argument("--split_name", choices=["val", "test"], default="val")
+    ap.add_argument("--split_name", choices=["train", "val", "test"], default="val")
     ap.add_argument("--dilations", default="", help="unused for MS_TCN2 causal eval")
     ap.add_argument("--dropout", type=float, default=0.1)
     ap.add_argument("--causal", action="store_true", help="use causal MS-TCN2; default is non-causal")
+    ap.add_argument("--confidence_threshold", type=float, default=None,
+                    help="If max softmax prob < threshold, predict background (class 0). Default: no threshold.")
 
     args = ap.parse_args()
 
@@ -107,7 +141,7 @@ def main():
 
     # load model (causal MS-TCN2)
     import sys
-    MS_TCN_DIR = (pathlib.Path(__file__).resolve().parents[2] / "hpc_scripts" / "MS-TCN")
+    MS_TCN_DIR = (pathlib.Path(__file__).resolve().parents[2] / "MS-TCN")
     if str(MS_TCN_DIR) not in sys.path:
         sys.path.insert(0, str(MS_TCN_DIR))
     if args.causal:
@@ -145,8 +179,13 @@ def main():
         xb = torch.from_numpy(X.T).float().unsqueeze(0).to(device)  # [1,D,T]
         with torch.no_grad():
             logits_bct = model(xb)[-1][0]            # [C,T]
-            logits = logits_bct.transpose(0,1).cpu().numpy()  # [T,C]
-        pred = logits.argmax(-1)
+            probs = torch.softmax(logits_bct, dim=0).transpose(0,1).cpu().numpy()  # [T,C]
+        pred = probs.argmax(-1)
+        
+        # Apply confidence threshold: if max prob < threshold, predict background (class 0)
+        if args.confidence_threshold is not None:
+            max_probs = probs.max(-1)
+            pred[max_probs < args.confidence_threshold] = 0
 
         # decoding: use argmax only (no postprocessing)
         acc = float((pred == y).mean())
