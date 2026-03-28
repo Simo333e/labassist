@@ -1,0 +1,47 @@
+# Finetune MS-TCN on combined_pcr with horizontal flip augmentation
+# - Uses features with both vertical AND horizontal flip for mydata
+# - Excludes broken pipette video (20251120_065442Z) from training
+# - Transfer learning from FineBio atomic pretrained model
+
+exp_name: ms_tcn_combined_pcr_hflip_exclude_broken
+exp_dir: /work3/s204157/experiments/combined_pcr_hflip_exclude_broken
+device: cuda:0
+
+# Load pretrained weights from FineBio atomic training
+# The classification head will be replaced for 5 classes
+pretrained:
+  checkpoint: /work3/s204157/experiments/finebio_atomic_pretrain/epoch-50.model
+  num_classes: null  # Will be determined from finebio class_index
+
+data:
+  # Use splits that exclude the broken pipette video
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/splits_exclude_broken.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  # Use features with crop + vertical flip + horizontal flip, short window
+  xdir: /work3/s204157/data/labassist/combined_pcr/cache/features_10hz_i3d_selective_crop_vhflip_win16
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6
+  num_f_maps: 64
+  features_dim: 1024
+
+training:
+  num_epochs: 100
+  batch_size: 8
+  # Lower learning rate for finetuning
+  lr: 5e-5
+  use_class_weights: false
+  # Higher dropout for small dataset
+  feature_dropout_p: 0.3
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  # Focal Loss
+  use_focal_loss: true
+  focal_gamma: 2.0

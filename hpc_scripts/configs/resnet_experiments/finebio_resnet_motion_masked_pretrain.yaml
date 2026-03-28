@@ -1,0 +1,47 @@
+# Stage 1: Atomic Action Pretraining on Full FineBio
+# ResNet18 + Motion features WITH MASKING
+# This checkpoint will be used for cascade training (Stage 2 & 3)
+
+exp_name: finebio_resnet_motion_masked_pretrain
+exp_dir: /work3/s204157/experiments/finebio_resnet_motion_masked_pretrain
+device: cuda:0
+
+pretrained:
+  checkpoint: null  # Train from scratch
+
+data:
+  splits: /work3/s204157/data/labassist/finebio_full/splits_finebio_atomic.json
+  class_index: /work3/s204157/data/labassist/finebio_full/cache_resnet/class_index.json
+  xdir: /work3/s204157/data/labassist/finebio_full/cache/features_10hz_resnet18_motion_masked
+  ydir: /work3/s204157/data/labassist/finebio_full/cache_resnet/labels
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6  # Good capacity for atomic actions
+  num_f_maps: 64
+  features_dim: 1024  # ResNet18 (512) + Motion (512)
+
+training:
+  num_epochs: 150
+  batch_size: 8
+  lr: 1e-3
+  use_class_weights: true
+  feature_dropout_p: 0.0
+  smoothing_lambda: 0.15
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  use_focal_loss: true
+  focal_gamma: 2.0
+
+logging:
+  log_interval: 20
+  save_every_n_epochs: 10
+
+
+
+

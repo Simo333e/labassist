@@ -1,0 +1,43 @@
+# Cascade Training Stage 3: K-Fold on mydata with ResNet+Motion
+# Starting from finebio_only_stage2_resnet_motion checkpoint
+# Training ONLY on mydata with 5-fold cross-validation
+# Using ResNet18+Motion features (1024D: 512 RGB + 512 Motion)
+
+exp_name: mydata_kfold_exp16_cascaded_resnet_motion_fold${FOLD_IDX}
+exp_dir: /work3/s204157/experiments/mydata_kfold_exp16_cascaded_resnet_motion/fold${FOLD_IDX}
+device: cuda:0
+
+pretrained:
+  # Using epoch-62 from Stage 2 (acc=0.972577)
+  checkpoint: /work3/s204157/experiments/finebio_only_stage2_resnet_motion/epoch-62.model
+  num_classes: 5  # PCR actions
+
+data:
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/kfold_mydata/splits_fold${FOLD_IDX}.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  xdir: /work3/s204157/data/labassist/combined_pcr_resnet_motion/features
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6  # Same as Stage 2
+  num_f_maps: 64
+  features_dim: 1024  # ResNet18 (512) + Motion (512)
+
+training:
+  num_epochs: 50
+  batch_size: 8
+  lr: 5e-5  # Lower LR for fine-tuning
+  use_class_weights: false
+  feature_dropout_p: 0.25
+  smoothing_lambda: 0.15
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  use_focal_loss: true
+  focal_gamma: 2.0
+

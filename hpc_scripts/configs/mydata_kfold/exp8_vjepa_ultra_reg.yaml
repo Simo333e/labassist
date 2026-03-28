@@ -1,0 +1,42 @@
+exp_name: mydata_kfold_exp8_vjepa_ultra_reg_fold${FOLD_IDX}
+exp_dir: /work3/s204157/experiments/mydata_kfold_exp8_vjepa_ultra_reg/fold${FOLD_IDX}
+device: cuda:0
+
+pretrained:
+  checkpoint: null
+  num_classes: null  # FineBio has 36 atomic actions
+
+data:
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/kfold_mydata/splits_fold${FOLD_IDX}.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  xdir: /work3/s204157/data/labassist/combined_pcr/cache/features_10hz_vjepa_selective_crop_flip_stride1
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 2  # Even smaller capacity
+  num_f_maps: 48  # Reduced from 64
+  features_dim: 1024
+
+training:
+  num_epochs: 50
+  batch_size: 8
+  lr: 5e-5  # Lower learning rate for slower convergence
+  use_class_weights: false
+  feature_dropout_p: 0.6  # Very high dropout
+  smoothing_lambda: 0.5  # Very strong smoothing
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  use_focal_loss: true
+  focal_gamma: 2.0
+
+logging:
+  log_interval: 10
+  save_every_n_epochs: 2
+
+

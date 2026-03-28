@@ -1,0 +1,39 @@
+exp_name: ms_tcn_combined_pcr_i3d_norm_5class_trimmed_v1
+exp_dir: /work3/s204157/experiments/ms_tcn_combined_pcr_i3d_norm_5class_trimmed_v1
+device: cuda:0
+
+# Train from scratch
+pretrained:
+  checkpoint: null
+  num_classes: null
+
+data:
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/splits.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  xdir: /work3/s204157/data/labassist/combined_pcr/cache/features_10hz_i3d_norm_trimmed
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class_trimmed
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6
+  num_f_maps: 64
+  features_dim: 1024
+
+training:
+  num_epochs: 100
+  batch_size: 8
+  lr: 1e-4
+  use_class_weights: true
+  max_class_weight: 10.0       # Conservative - I3D can be sensitive
+  feature_dropout_p: 0.15
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.70     # More background included
+  background_label: none
+
+
+
+

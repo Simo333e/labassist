@@ -1,0 +1,50 @@
+# Cascade Training Stage 2: FineBio-Only PCR with ResNet+Motion (MASKED)
+# Train on ONLY FineBio PCR videos (excluding mydata) with masked motion features
+# Starting from atomic action pretrained checkpoint (Stage 1)
+# This creates an intermediate checkpoint for Stage 3 K-fold on mydata
+
+exp_name: finebio_only_stage2_resnet_motion_masked
+exp_dir: /work3/s204157/experiments/finebio_only_stage2_resnet_motion_masked
+device: cuda:0
+
+pretrained:
+  checkpoint: /work3/s204157/experiments/finebio_resnet_motion_masked_pretrain/epoch-80.model
+  num_classes: 36  # Atomic actions
+
+data:
+  # Only FineBio PCR videos (42 videos)
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/splits_finebio_only.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  xdir: /work3/s204157/data/labassist/combined_pcr_resnet_motion_masked/features
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6  # Same as pretrain
+  num_f_maps: 64
+  features_dim: 1024  # ResNet18 (512) + Motion (512)
+
+training:
+  num_epochs: 100
+  batch_size: 8
+  lr: 1e-4
+  use_class_weights: false
+  feature_dropout_p: 0.2
+  smoothing_lambda: 0.15
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  use_focal_loss: true
+  focal_gamma: 2.0
+
+logging:
+  log_interval: 10
+  save_every_n_epochs: 2
+
+
+
+

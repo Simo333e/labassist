@@ -1,0 +1,31 @@
+exp_name: ms_tcn_combined_pcr_vjepa_v2
+exp_dir: /work3/s204157/experiments/ms_tcn_combined_pcr_vjepa_v2
+device: cuda:0
+
+
+data:
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/splits.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index.json
+  xdir: /work3/s204157/data/labassist/combined_pcr/cache/features_10hz_vjepa
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6
+  num_f_maps: 64
+  features_dim: 1024
+
+training:
+  num_epochs: 150               # Much longer training
+  batch_size: 8                 # Smaller batches for stability
+  lr: 1e-4                      # Lower LR for training from scratch
+  use_class_weights: true
+  max_class_weight: 50.0        # Allow much higher weights
+  feature_dropout_p: 0.15       # Slightly more regularization
+  window_size: 256
+  window_step: 64               # More overlap = more windows
+  balanced_windows: true
+  max_windows_per_video: 300    # Force action-dense windows
+  balanced_mix_ratio: 0.95      # Almost all action-centered
+  background_label: none

@@ -1,0 +1,45 @@
+# Finetune MS-TCN on combined_pcr using FineBio pretrained weights
+# Transfer learning: FineBio atomic → combined_pcr 5-class
+
+exp_name: ms_tcn_combined_pcr_finetuned_from_finebio
+exp_dir: /work3/s204157/experiments/combined_pcr_finetuned_from_finebio
+device: cuda:0
+
+# Load pretrained weights from FineBio atomic training
+# The classification head will be replaced for 5 classes
+pretrained:
+  checkpoint: /work3/s204157/experiments/finebio_atomic_pretrain/epoch-110.model
+  num_classes: null  # Will be determined from finebio class_index
+
+data:
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/splits.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  # Use flipped + cropped + short window features
+  xdir: /work3/s204157/data/labassist/combined_pcr/cache/features_10hz_i3d_selective_crop_flip_win16
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6
+  num_f_maps: 64
+  features_dim: 1024
+
+training:
+  num_epochs: 100
+  batch_size: 8
+  # Lower learning rate for finetuning
+  lr: 5e-5
+  use_class_weights: false
+  # Higher dropout for small dataset
+  feature_dropout_p: 0.3
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  # Focal Loss
+  use_focal_loss: true
+  focal_gamma: 2.0
+

@@ -1,0 +1,47 @@
+# Experiment 14: Cascaded Training Approach (Stage 3)
+# Uses intermediate checkpoint trained on FineBio-only (Stage 2)
+# This ensures clean separation: Atomic → FineBio → mydata K-fold evaluation
+
+exp_name: mydata_kfold_exp14_cascaded_fold${FOLD_IDX}
+exp_dir: /work3/s204157/experiments/mydata_kfold_exp14_cascaded/fold${FOLD_IDX}
+device: cuda:0
+
+# Start from FineBio-only intermediate checkpoint (Stage 2)
+# NOTE: Update the checkpoint path to the best epoch from Stage 2 after training completes
+pretrained:
+  checkpoint: /work3/s204157/experiments/finebio_only_stage2/epoch-80.model
+  num_classes: 5  # Already adapted to 5-class PCR in Stage 2
+
+data:
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/kfold_mydata/splits_fold${FOLD_IDX}.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  xdir: /work3/s204157/data/labassist/combined_pcr/cache/features_10hz_i3d_selective_crop_flip_win16
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 3  # Reduced capacity for regularization
+  num_f_maps: 64
+  features_dim: 1024
+
+training:
+  num_epochs: 50
+  batch_size: 8
+  lr: 1e-4
+  use_class_weights: false
+  feature_dropout_p: 0.50  # Strong regularization
+  smoothing_lambda: 0.30
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  use_focal_loss: true
+  focal_gamma: 2.0
+
+logging:
+  log_interval: 10
+  save_every_n_epochs: 2
+

@@ -1,0 +1,58 @@
+# Experiment: I3D + YOLO Object Detection Features
+# 
+# Motivation: The model confuses "Pipette pcr tube" with "Aspirate reagent"
+# because these actions are visually similar (both involve pipetting).
+# The key difference is the TARGET OBJECT:
+# - Pipette pcr tube → interacting with PCR tube
+# - Aspirate reagent → interacting with reagent bottle
+#
+# Solution: Add YOLO object detection features that encode:
+# - Which objects are present (confidence per class)
+# - Where key objects are (normalized positions)
+# - Hand-to-object proximity (discriminative for target selection)
+#
+# Feature fusion: I3D (1024D) + YOLO (28D) = 1052D
+
+exp_name: combined_pcr_i3d_yolo_fused
+exp_dir: /work3/s204157/experiments/combined_pcr_i3d_yolo_fused
+device: cuda:0
+
+# Finetune from FineBio atomic (same as I3D baseline)
+pretrained:
+  checkpoint: null
+  num_classes: null  # FineBio has 36 atomic actions
+
+data:
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/splits.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  # Use fused I3D + YOLO features
+  xdir: /work3/s204157/data/labassist/combined_pcr/cache/features_10hz_i3d_yolo_fused
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 3  # Reduced capacity (same as combined_reg baseline)
+  num_f_maps: 64
+  features_dim: 1052  # 1024 (I3D) + 28 (YOLO)
+
+training:
+  num_epochs: 100
+  batch_size: 8
+  lr: 1e-4
+  use_class_weights: false
+  feature_dropout_p: 0.5   # High dropout (same as combined_reg)
+  smoothing_lambda: 0.3    # Strong smoothing (same as combined_reg)
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  use_focal_loss: true
+  focal_gamma: 2.0
+
+logging:
+  log_interval: 10
+  save_every_n_epochs: 2
+

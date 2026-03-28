@@ -1,0 +1,46 @@
+# Experiment 5: Early Stopping Test
+# Same as baseline but stops at epoch 15 to test if that's optimal
+# Pretrain from FineBio epoch 50 checkpoint
+
+exp_name: mydata_kfold_exp5_early_stop_fold${FOLD_IDX}
+exp_dir: /work3/s204157/experiments/mydata_kfold_exp5_early_stop/fold${FOLD_IDX}
+device: cuda:0
+
+# Pretrain from FineBio
+pretrained:
+  checkpoint: /work3/s204157/experiments/finebio_atomic_pretrain/epoch-50.model
+  num_classes: 36  # FineBio has 36 atomic actions
+
+data:
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/kfold_mydata/splits_fold${FOLD_IDX}.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  xdir: /work3/s204157/data/labassist/combined_pcr/cache/features_10hz_i3d_selective_crop_flip_win16
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6
+  num_f_maps: 64
+  features_dim: 1024
+
+training:
+  # EARLY STOP: only 15 epochs to test if that's sufficient
+  num_epochs: 15
+  batch_size: 8
+  lr: 1e-4
+  use_class_weights: false
+  # Baseline dropout
+  feature_dropout_p: 0.25
+  # Baseline smoothing
+  smoothing_lambda: 0.15
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  use_focal_loss: true
+  focal_gamma: 2.0
+
+

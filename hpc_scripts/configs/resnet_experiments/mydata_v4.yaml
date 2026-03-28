@@ -1,0 +1,38 @@
+exp_name: ms_tcn_mydata_v4
+exp_dir: /work3/s204157/experiments/ms_tcn_mydata_v4
+device: cuda:0
+
+pretrained:
+  checkpoint: /work3/s204157/experiments/ms_tcn_causal_steps_resnet18_motion_v1/epoch-150.model
+  num_classes: 33
+
+data:
+  splits: /work3/s204157/data/labassist/my_data/cache/splits.json
+  class_index: /work3/s204157/data/labassist/my_data/cache/class_index.json
+  xdir: /work3/s204157/data/labassist/my_data/cache/features_10hz_resnet18_motion_ctx5
+  ydir: /work3/s204157/data/labassist/my_data/cache/labels
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6
+  num_f_maps: 64
+  features_dim: 5120
+
+training:
+  num_epochs: 10
+  batch_size: 16
+  lr: 3e-4
+  lr_finetune: 3e-4
+  use_class_weights: true
+  max_class_weight: 3.0
+  feature_dropout_p: 0.05
+  window_size: 1024        
+  window_step: 1024
+  balanced_windows: true
+  background_label: none
+
+augmentation:
+  center_jitter: 1
+
+

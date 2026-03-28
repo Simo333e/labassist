@@ -1,0 +1,50 @@
+# Experiment 11: I3D + YOLO Fused with Strong Regularization
+# Tests YOLO features with proper regularization for training from scratch
+#
+# Key changes vs exp9:
+# - HIGH dropout: 0.50 (was 0.25)
+# - STRONG smoothing: 0.30 (was 0.15) 
+# - REDUCED capacity: num_R=3 (was 6)
+#
+# Rationale: Training from scratch on small data needs aggressive regularization
+
+exp_name: mydata_kfold_exp11_i3d_yolo_strong_reg_fold${FOLD_IDX}
+exp_dir: /work3/s204157/experiments/mydata_kfold_exp11_i3d_yolo_strong_reg/fold${FOLD_IDX}
+device: cuda:0
+
+# NO pretraining - feature dimension changed (1052 vs 1024)
+pretrained:
+  checkpoint: null
+  num_classes: null
+
+data:
+  # K-fold split file (replaced per fold)
+  splits: /work3/s204157/data/labassist/combined_pcr/cache/kfold_mydata/splits_fold${FOLD_IDX}.json
+  class_index: /work3/s204157/data/labassist/combined_pcr/cache/class_index_5class.json
+  # FUSED features: I3D (1024) + YOLO (28) = 1052 (HIGH-RES YOLO)
+  xdir: /work3/s204157/data/labassist/combined_pcr/cache/features_10hz_i3d_yolo_hires_fused
+  ydir: /work3/s204157/data/labassist/combined_pcr/cache/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 3               # REDUCED capacity (was 6) - less overfitting
+  num_f_maps: 64
+  features_dim: 1052     # 1024 (I3D) + 28 (YOLO)
+
+training:
+  num_epochs: 50
+  batch_size: 8
+  lr: 1e-4
+  use_class_weights: false
+  feature_dropout_p: 0.50  # HIGH dropout (was 0.25)
+  smoothing_lambda: 0.30   # STRONG smoothing (was 0.15)
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  use_focal_loss: true
+  focal_gamma: 2.0
+

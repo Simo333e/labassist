@@ -1,0 +1,9 @@
+{
+  "none": 0,
+  "Adjust pipette volume": 1,
+  "Attach pipette tip": 2,
+  "Eject pipette tip": 3,
+  "Manipulate pcr tubes": 4,
+  "Manipulate reagents": 5,
+  "Switch pipette": 6
+}

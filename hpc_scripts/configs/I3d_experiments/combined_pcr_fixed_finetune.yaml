@@ -1,0 +1,51 @@
+# Finetune MS-TCN on combined_pcr with FIXED mydata labels
+# 
+# This config uses the corrected mydata pipeline where labels are 
+# properly aligned with the original (untrimmed) videos.
+#
+# Transfer learning: FineBio atomic pretrained → combined_pcr 5-class
+
+exp_name: ms_tcn_combined_pcr_fixed
+exp_dir: /work3/s204157/experiments/combined_pcr_fixed
+device: cuda:0
+
+# Load pretrained weights from FineBio atomic training
+pretrained:
+  checkpoint: /work3/s204157/experiments/finebio_atomic_pretrain/epoch-50.model
+  num_classes: null  # Will be determined from finebio class_index
+
+data:
+  # Combined splits: FineBio train + fixed mydata train, mydata val
+  splits: /work3/s204157/data/labassist/combined_pcr_fixed/splits.json
+  class_index: /work3/s204157/data/labassist/combined_pcr_fixed/class_index_5class.json
+  
+  # Feature and label directories (symlinked from FineBio + fixed mydata)
+  xdir: /work3/s204157/data/labassist/combined_pcr_fixed/features
+  ydir: /work3/s204157/data/labassist/combined_pcr_fixed/labels_5class
+
+model:
+  num_layers_PG: 10
+  num_layers_R: 10
+  num_R: 6
+  num_f_maps: 64
+  features_dim: 1024
+
+training:
+  num_epochs: 100
+  batch_size: 8
+  # Lower learning rate for finetuning
+  lr: 5e-5
+  use_class_weights: false
+  # Moderate dropout
+  feature_dropout_p: 0.3
+  window_size: 256
+  window_step: 64
+  balanced_windows: true
+  max_windows_per_video: 300
+  balanced_mix_ratio: 0.90
+  background_label: none
+  # Focal Loss
+  use_focal_loss: true
+  focal_gamma: 2.0
+
+
